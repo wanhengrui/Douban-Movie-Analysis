@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import time
-#import pandas as pd
+import pandas as pd
 
 def get_page_data(start):
     url = f"https://movie.douban.com/top250?start={start}"  # 豆瓣每一页网址
@@ -78,4 +78,13 @@ for start in range(0, 250, 25):
 
     time.sleep(1)
 
-print("总电影数:",len(all_movies))
+df = pd.DataFrame(all_movies)
+
+print(df.head())
+
+df.to_csv("../data/movies.csv",
+          index=False,
+          encoding="utf-8-sig"
+          )
+
+print("csv保存成功")
