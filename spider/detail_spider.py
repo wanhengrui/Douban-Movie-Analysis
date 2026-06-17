@@ -324,7 +324,7 @@ def get_mobile_detail(url, max_retries=3):
 #  第三部分：主流程
 #  支持断点续传：
 #    1. 若 data/movies_detail.csv 已存在 → 只补爬缺失的片长/简介
-#    2. 若只有 data/movies.csv → 从头爬取（需列表页可用）
+#    2. 若只有 data/movies.csv → 加载基础字段，跳过被封锁的列表页
 #    3. 语言字段始终通过国家映射补全
 # ============================================================
 
@@ -338,25 +338,17 @@ def load_existing_data():
 
     返回:
         (all_movies, need_indices)
-        all_movies: 完整的电影列表（从已有CSV加载）
-        need_indices: 需要补爬的索引列表（runtime或summary为空）
+        all_movies: 完整的电影列表
+        need_indices: 需要补爬的索引列表
     """
     import os
 
-    # 优先读取详情页CSV
+    # 优先读取详情页CSV（最完整的版本）
     if os.path.exists(CSV_PATH):
         print(f"[加载] 发现已有 {CSV_PATH}")
         df = pd.read_csv(CSV_PATH)
         all_movies = df.to_dict("records")
-
-        # 确保必要字段存在
-        for movie in all_movies:
-            if "runtime" not in movie:
-                movie["runtime"] = ""
-            if "summary" not in movie:
-                movie["summary"] = ""
-            if "language" not in movie:
-                movie["language"] = ""
+        _ensure_fields(all_movies)
 
         need_indices = [
             i for i, m in enumerate(all_movies)
@@ -367,13 +359,39 @@ def load_existing_data():
         print(f"  其中 {len(need_indices)} 条缺片长/简介需要补爬")
         return all_movies, need_indices
 
-    # 回退：读取基础CSV
+    # 回退：从基础CSV加载，列表页已被封锁时也能继续
     if os.path.exists(BASE_CSV_PATH):
         print(f"[加载] 发现已有 {BASE_CSV_PATH}（基础版）")
-        print(f"  需要从头爬取列表页获取导演/演员...")
-        return None, None
+        df = pd.read_csv(BASE_CSV_PATH)
+        all_movies = df.to_dict("records")
 
+        # 补充缺失字段为空值
+        _ensure_fields(all_movies)
+        for m in all_movies:
+            m["director"] = m.get("director", "")
+            m["actors"] = m.get("actors", "")
+            m["detail_url"] = m.get("detail_url", "")
+
+        # 所有电影都需要爬取手机详情页
+        need_indices = list(range(len(all_movies)))
+
+        print(f"  已加载 {len(all_movies)} 条记录（5字段基础版）")
+        print(f"  导演/演员/片长/简介需通过手机详情页获取")
+        print(f"  共 {len(need_indices)} 条需要爬取")
+        return all_movies, need_indices
+
+    print("[加载] 未找到任何数据文件，请先运行 douban_spider.py")
     return None, None
+
+
+def _ensure_fields(movies):
+    """确保所有必要字段存在，缺失的填空字符串"""
+    fields = ["runtime", "summary", "language",
+              "director", "actors", "detail_url"]
+    for m in movies:
+        for f in fields:
+            if f not in m:
+                m[f] = ""
 
 
 def main():
@@ -385,30 +403,41 @@ def main():
     # ---- 加载已有数据 ----
     all_movies, need_indices = load_existing_data()
 
-    # ---- 情况A：已有 movies_detail.csv，只需补爬缺失项 ----
+    # ---- 情况A：已有数据，只需补爬缺失项 ----
     if all_movies is not None:
         if need_indices:
-            print(f"\n[补爬] 手机详情页，补充 {len(need_indices)} 部电影的片长/简介...")
-            for count, idx in enumerate(need_indices):
-                movie = all_movies[idx]
-                print(f"  ({count + 1}/{len(need_indices)}) {movie['title']}")
+            # 区分有URL和无URL的
+            can_crawl = [i for i in need_indices
+                         if all_movies[i].get("detail_url")]
+            cannot_crawl = [i for i in need_indices
+                            if not all_movies[i].get("detail_url")]
 
-                extra = get_mobile_detail(movie.get("detail_url", ""))
-                movie["runtime"] = extra["runtime"]
-                movie["summary"] = extra["summary"]
+            if cannot_crawl:
+                print(f"\n  ⚠ {len(cannot_crawl)} 部电影缺少详情页URL，无法爬取")
+                print(f"    需等列表页解封后重新生成")
 
-                if extra["runtime"] or extra["summary"]:
-                    print(f"    ✓ 片长={extra['runtime'][:20]}, "
-                          f"简介={len(extra['summary'])}字")
-                else:
-                    print(f"    ⚠ 未获取到补充信息")
+            if can_crawl:
+                print(f"\n[补爬] 手机详情页，补充 {len(can_crawl)} 部电影的片长/简介...")
+                for count, idx in enumerate(can_crawl):
+                    movie = all_movies[idx]
+                    print(f"  ({count + 1}/{len(can_crawl)}) {movie['title']}")
 
-                time.sleep(2 + random.uniform(0, 1.5))
+                    extra = get_mobile_detail(movie.get("detail_url", ""))
+                    movie["runtime"] = extra["runtime"]
+                    movie["summary"] = extra["summary"]
 
-                # 每10部休息一下
-                if (count + 1) % 10 == 0:
-                    print(f"    --- 已完成 {count + 1}/{len(need_indices)}，休息 8 秒 ---")
-                    time.sleep(8)
+                    if extra["runtime"] or extra["summary"]:
+                        print(f"    ✓ 片长={extra['runtime'][:20]}, "
+                              f"简介={len(extra['summary'])}字")
+                    else:
+                        print(f"    ⚠ 未获取到补充信息")
+
+                    time.sleep(2 + random.uniform(0, 1.5))
+
+                    if (count + 1) % 10 == 0 and (count + 1) < len(can_crawl):
+                        print(f"    --- 已完成 {count + 1}/{len(can_crawl)}，"
+                              f"休息 8 秒 ---")
+                        time.sleep(8)
 
         # ---- 补全语言 ----
         print(f"\n{'=' * 60}")
