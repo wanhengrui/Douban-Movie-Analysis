@@ -94,6 +94,7 @@ def load_and_summarize():
 
     # ---- 导演统计 ----
     director_exploded = explode_col(df["director"])
+    director_exploded = director_exploded[director_exploded != "未知"]
     director_count = director_exploded.value_counts().head(10)
     summary["director_top10"] = [
         f"{d}: {n}部" for d, n in director_count.items()
@@ -109,6 +110,7 @@ def load_and_summarize():
 
     # ---- 演员统计 ----
     actor_exploded = explode_col(df["actors"])
+    actor_exploded = actor_exploded[actor_exploded != "未知"]
     actor_count = actor_exploded.value_counts().head(10)
     summary["actor_top10"] = [
         f"{a}: {n}部" for a, n in actor_count.items()

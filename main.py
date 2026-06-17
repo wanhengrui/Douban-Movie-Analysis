@@ -75,7 +75,9 @@ def build_data_context(df):
     ec = explode_col(df["country"], " / ")
     eg = explode_col(df["genre"], " ")
     ed = explode_col(df["director"], " / ")
+    ed = ed[ed != "未知"]
     ea = explode_col(df["actors"], " / ")
+    ea = ea[ea != "未知"]
     decades = df["year"].apply(lambda y: f"{y // 10 * 10}年代").value_counts()
     return f"""豆瓣Top250：{len(df)}部电影，评分{df['score'].min():.1f}~{df['score'].max():.1f}，均分{df['score'].mean():.2f}。
 年代{int(df['year'].min())}~{int(df['year'].max())}。
@@ -321,6 +323,7 @@ class App:
 
     def show_director(self):
         e = explode_col(self.df["director"], " / ")
+        e = e[e != "未知"]  # 剔除缺失值
         ds = pd.DataFrame({"director": e, "score": self.df.loc[e.index, "score"]})
         g = ds.groupby("director")["score"].agg(["mean", "count"])
         g = g[g["count"] >= 2].sort_values("mean", ascending=False)
@@ -331,6 +334,7 @@ class App:
 
     def show_actor(self):
         e = explode_col(self.df["actors"], " / ")
+        e = e[e != "未知"]  # 剔除缺失值
         ag = pd.DataFrame({"actor": e, "score": self.df.loc[e.index, "score"]})
         g = ag.groupby("actor")["score"].agg(["mean", "count"])
         g = g[g["count"] >= 2].sort_values("mean", ascending=False)
