@@ -295,123 +295,177 @@ def api_report():
 #  页面
 # ============================================================
 
-INDEX = """<!DOCTYPE html>
+INDEX = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>豆瓣Top250 电影分析系统</title>
 <style>
+:root {
+  --green: #2d8c4a; --green-dark: #1f6b35; --green-light: #e8f5e9;
+  --orange: #e09040; --orange-dark: #c87830;
+  --bg: #f5f0eb; --card: #fff; --card-alt: #fafaf7;
+  --text: #333; --text-sub: #888; --border: #e0d8cf;
+  --blue: #1a6fb5; --blue-dark: #145a91;
+  --radius: 12px; --shadow: 0 2px 12px rgba(0,0,0,.06);
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:#f5f0eb;color:#333;height:100vh;display:flex;flex-direction:column}
-header{background:#2d8c4a;color:#fff;padding:14px 24px;font-size:18px;font-weight:bold;display:flex;align-items:center;justify-content:space-between}
-header span.status{font-size:13px;font-weight:normal;opacity:.85}
-main{flex:1;display:flex;overflow:hidden}
-/* ---- 左侧 ---- */
-aside{width:400px;background:#fff;border-right:1px solid #e0d8cf;display:flex;flex-direction:column;flex-shrink:0}
-aside .section-title{padding:18px 20px 10px;font-size:15px;font-weight:bold;color:#333}
-aside .btns{padding:0 16px;display:flex;flex-wrap:wrap;gap:8px}
-aside .btns button{flex:1;min-width:calc(50% - 4px);padding:10px 6px;border:1px solid #e0d8cf;border-radius:6px;background:#fafaf7;cursor:pointer;font-size:13px;color:#444;transition:all .15s}
-aside .btns button:hover{background:#2d8c4a;color:#fff;border-color:#2d8c4a}
-aside .btns button.accent{min-width:100%;background:#e09040;color:#fff;border-color:#e09040}
-aside .btns button.accent:hover{background:#c87830}
-aside .rec-box{margin:12px 16px;padding:12px;background:#f0f7f2;border-radius:8px;border:1px solid #d0e8d4}
-aside .rec-box .title{font-size:13px;font-weight:bold;color:#2d8c4a;margin-bottom:6px}
-aside .rec-box input{width:100%;padding:8px 12px;border:1px solid #d0e8d4;border-radius:6px;font-size:13px;outline:none}
-aside .rec-box input:focus{border-color:#2d8c4a}
-aside .rec-box .hint{font-size:11px;color:#999;margin-top:4px}
-aside .result{flex:1;margin:0 16px 16px;background:#fafaf7;border-radius:8px;padding:16px;overflow:auto;font-family:Consolas,monospace;font-size:13px;line-height:1.7;white-space:pre-wrap}
-/* ---- 右侧 ---- */
-section.chat{flex:1;background:#fff;display:flex;flex-direction:column;border-left:1px solid #e0d8cf}
-section.chat .header{padding:18px 24px 10px;font-size:15px;font-weight:bold;color:#333;border-bottom:1px solid #f0e8dc}
-section.chat .quick{padding:10px 20px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid #f5f0eb;background:#fafaf7}
-section.chat .quick button{padding:6px 14px;border:1px solid #e0d8cf;border-radius:14px;background:#fff;cursor:pointer;font-size:12px;color:#666;transition:all .15s}
-section.chat .quick button:hover{background:#2d8c4a;color:#fff;border-color:#2d8c4a}
-section.chat .messages{flex:1;padding:16px 24px;overflow:auto;display:flex;flex-direction:column;gap:12px}
-section.chat .messages .msg{max-width:85%;padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.6;animation:fadeIn .3s}
-section.chat .messages .msg.user{align-self:flex-end;background:#1a6fb5;color:#fff;border-bottom-right-radius:3px}
-section.chat .messages .msg.ai{align-self:flex-start;background:#f0f0f0;color:#333;border-bottom-left-radius:3px}
-section.chat .messages .msg.thinking{align-self:flex-start;color:#aaa;font-size:12px;padding:0}
-section.chat .input-box{padding:12px 20px 16px;display:flex;gap:10px;border-top:1px solid #f0e8dc;background:#fafaf7}
-section.chat .input-box input{flex:1;padding:10px 16px;border:1px solid #e0d8cf;border-radius:20px;font-size:14px;outline:none;transition:border .2s}
-section.chat .input-box input:focus{border-color:#2d8c4a}
-section.chat .input-box button{padding:10px 24px;background:#2d8c4a;color:#fff;border:none;border-radius:20px;font-size:14px;cursor:pointer;transition:background .15s}
-section.chat .input-box button:hover{background:#23703a}
-@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
+/* ---- header ---- */
+header{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+header h1{font-size:20px;font-weight:700;letter-spacing:.5px}
+header .status{font-size:13px;opacity:.9;background:rgba(255,255,255,.15);padding:6px 14px;border-radius:20px}
+/* ---- layout ---- */
+main{flex:1;display:flex;overflow:hidden;gap:0}
+/* ---- sidebar ---- */
+aside{width:420px;background:var(--card);display:flex;flex-direction:column;flex-shrink:0;box-shadow:var(--shadow);z-index:1}
+aside .section{padding:16px 20px 8px}
+aside .section h2{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
+aside .section h2 .dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block}
+aside .btn-row{padding:4px 20px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+aside .btn-row button{padding:10px 8px;border:1px solid var(--border);border-radius:8px;background:var(--card-alt);cursor:pointer;font-size:13px;color:var(--text);transition:all .2s;font-weight:500}
+aside .btn-row button:hover{background:var(--green);color:#fff;border-color:var(--green);transform:translateY(-1px);box-shadow:0 3px 8px rgba(45,140,74,.25)}
+aside .btn-row button.report{grid-column:1/-1;background:var(--orange);color:#fff;border-color:var(--orange)}
+aside .btn-row button.report:hover{background:var(--orange-dark);border-color:var(--orange-dark);box-shadow:0 3px 8px rgba(224,144,64,.3)}
+/* ---- rec panel ---- */
+.rec-panel{margin:0 20px 12px;padding:14px 16px;background:var(--green-light);border-radius:var(--radius);border:1px solid #d0e8d4}
+.rec-panel label{font-size:13px;font-weight:700;color:var(--green);display:block;margin-bottom:8px}
+.rec-panel input{width:100%;padding:10px 14px;border:1px solid #d0e8d4;border-radius:8px;font-size:13px;outline:none;background:#fff;transition:border .2s}
+.rec-panel input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(45,140,74,.1)}
+.rec-panel .hint{font-size:11px;color:var(--text-sub);margin-top:5px}
+/* ---- result area ---- */
+.result-area{flex:1;margin:0 20px 16px;background:var(--card-alt);border-radius:var(--radius);padding:16px;overflow:auto;font-size:13px;line-height:1.8;border:1px solid var(--border)}
+.result-area .empty{color:var(--text-sub);text-align:center;padding:40px 0;line-height:2}
+.result-area .empty .icon{font-size:36px;display:block;margin-bottom:8px}
+/* rec cards */
+.rec-card{background:var(--card);border-radius:10px;padding:14px 16px;margin-bottom:10px;border:1px solid var(--border);transition:all .2s;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.rec-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.08);border-color:#ccc}
+.rec-card .rec-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.rec-card .rec-title{font-size:15px;font-weight:700;color:var(--text)}
+.rec-card .rec-score{font-size:13px;font-weight:700;color:var(--orange);background:#fff7ef;padding:3px 10px;border-radius:12px}
+.rec-card .rec-sim{font-size:11px;color:var(--green);font-weight:600}
+.rec-card .rec-meta{font-size:12px;color:var(--text-sub);margin-bottom:4px}
+.rec-card .rec-summary{font-size:12px;color:#666;line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rec-card .rec-rank{display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;border-radius:50%;background:var(--green);color:#fff;font-size:12px;font-weight:700;margin-right:10px}
+.ai-note{background:#f8f4ff;border:1px solid #e0d4f0;border-radius:10px;padding:14px 16px;margin-top:14px;font-size:13px;line-height:1.8;color:#555}
+.ai-note::before{content:'AI 分析';display:block;font-size:11px;font-weight:700;color:#7c5cbf;margin-bottom:6px;letter-spacing:1px;text-transform:uppercase}
+.stats-table{font-family:Consolas,"Courier New",monospace;font-size:13px;line-height:1.8}
+.stats-table .section-title{font-weight:700;color:var(--green);margin:14px 0 6px;font-size:14px}
+/* ---- chat ---- */
+section.chat{flex:1;background:var(--card);display:flex;flex-direction:column;position:relative}
+section.chat .chat-header{padding:18px 24px 12px;border-bottom:1px solid var(--border);background:var(--card-alt)}
+section.chat .chat-header h2{font-size:14px;font-weight:700;color:var(--text)}
+section.chat .quick-row{padding:10px 24px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--card-alt)}
+section.chat .quick-row button{padding:7px 16px;border:1px solid var(--border);border-radius:18px;background:var(--card);cursor:pointer;font-size:12px;color:#666;transition:all .2s;white-space:nowrap}
+section.chat .quick-row button:hover{background:var(--green);color:#fff;border-color:var(--green)}
+.messages{flex:1;padding:20px 24px;overflow:auto;display:flex;flex-direction:column;gap:14px;background:linear-gradient(180deg,#fafaf7 0%,#f5f2ed 100%)}
+.messages .msg{max-width:80%;padding:12px 16px;border-radius:14px;font-size:13px;line-height:1.7;animation:slideUp .25s ease-out;word-break:break-word}
+.messages .msg.user{align-self:flex-end;background:var(--blue);color:#fff;border-bottom-right-radius:4px;box-shadow:0 2px 8px rgba(26,111,181,.25)}
+.messages .msg.ai{align-self:flex-start;background:var(--card);color:var(--text);border-bottom-left-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:1px solid #eee}
+.messages .msg.thinking{align-self:flex-start;color:var(--text-sub);font-size:12px;padding:4px 0;animation:pulse 1.2s infinite}
+.messages .msg.thinking::after{content:'...';animation:dots 1.5s steps(3,end) infinite}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes dots{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
+.chat-input{padding:14px 24px 18px;display:flex;gap:10px;border-top:1px solid var(--border);background:var(--card-alt)}
+.chat-input input{flex:1;padding:12px 18px;border:1px solid var(--border);border-radius:24px;font-size:14px;outline:none;transition:all .2s;background:var(--card)}
+.chat-input input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(45,140,74,.08)}
+.chat-input button{padding:12px 28px;background:var(--green);color:#fff;border:none;border-radius:24px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;letter-spacing:.5px}
+.chat-input button:hover{background:var(--green-dark);transform:translateY(-1px);box-shadow:0 4px 12px rgba(45,140,74,.3)}
+.chat-input button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+/* ---- responsive ---- */
+@media(max-width:768px){
+  main{flex-direction:column}
+  aside{width:100%;max-height:50vh}
+  section.chat{min-height:50vh}
+}
 </style>
 </head>
 <body>
 <header>
-  豆瓣Top250 电影分析系统
-  <span class="status">已加载 {{s.total}} 部电影 | 评分 {{s.score_min}}~{{s.score_max}} | 均分 {{s.score_mean}}</span>
+  <h1>豆瓣Top250 电影分析系统</h1>
+  <span class="status">250部 | 均分 {{s.score_mean}} | {{s.year_min}}-{{s.year_max}}</span>
 </header>
 <main>
-  <aside>
-    <div class="section-title">数据查询</div>
-    <div class="btns">
-      <button onclick="showStats('country')">国家/地区</button>
-      <button onclick="showStats('genre')">类型分析</button>
-      <button onclick="showStats('director')">导演分析</button>
-      <button onclick="showStats('actor')">演员分析</button>
-      <button class="accent" onclick="genReport()">生成 AI 分析报告</button>
+<aside>
+  <div class="section"><h2><span class="dot"></span>数据统计查询</h2></div>
+  <div class="btn-row">
+    <button onclick="showStats('country')">国家/地区</button>
+    <button onclick="showStats('genre')">类型分析</button>
+    <button onclick="showStats('director')">导演排行</button>
+    <button onclick="showStats('actor')">演员排行</button>
+    <button class="report" onclick="genReport()">生成 AI 分析报告</button>
+  </div>
+  <div class="rec-panel">
+    <label>TF-IDF 电影推荐</label>
+    <input id="recInput" placeholder="输入电影名，如: 肖申克的救赎" onkeydown="if(event.key==='Enter')doRecommend()" autocomplete="off">
+    <div class="hint">基于剧情简介的文本相似度 — 找到内容最接近的电影</div>
+  </div>
+  <div class="result-area" id="result">
+    <div class="empty">
+      <span class="icon"></span>
+      点击上方按钮查看数据统计<br>或在推荐框中输入电影名获取推荐
     </div>
-    <div class="rec-box">
-      <div class="title">🎬 TF-IDF 电影推荐</div>
-      <input id="recInput" placeholder="输入电影名，如: 肖申克的救赎" onkeydown="if(event.key==='Enter')doRecommend()">
-      <div class="hint">基于剧情简介的文本相似度算法，找到内容最接近的电影</div>
-    </div>
-    <div class="result" id="result">点击按钮查看数据统计
-或在推荐框中输入电影名</div>
-  </aside>
-  <section class="chat">
-    <div class="header">AI 智能问答</div>
-    <div class="quick">
-      <button onclick="quickAsk('推荐和肖申克的救赎类似的电影')">推荐类似电影</button>
-      <button onclick="quickAsk('1990年代最好的10部电影')">1990年代TOP10</button>
-      <button onclick="quickAsk('日本动画为什么评分高')">日本动画分析</button>
-      <button onclick="quickAsk('评分最高的导演是谁')">最佳导演</button>
-    </div>
-    <div class="messages" id="messages">
-      <div class="msg ai">你好！我是电影数据分析助手。<br><br>左侧可以查看各维度数据统计，也可以输入电影名获得 <b>TF-IDF 智能推荐</b>。<br><br>有问题随时问我！</div>
-    </div>
-    <div class="input-box">
-      <input id="question" placeholder="输入问题..." onkeydown="if(event.key==='Enter')ask()">
-      <button onclick="ask()">发送</button>
-    </div>
-  </section>
+  </div>
+</aside>
+<section class="chat">
+  <div class="chat-header"><h2>AI 智能问答</h2></div>
+  <div class="quick-row">
+    <button onclick="quickAsk('推荐和肖申克的救赎类似的电影')">推荐类似电影</button>
+    <button onclick="quickAsk('1990年代最好的10部电影')">1990年代TOP10</button>
+    <button onclick="quickAsk('日本动画为什么评分高')">日本动画分析</button>
+    <button onclick="quickAsk('评分最高的导演是谁')">最佳导演</button>
+  </div>
+  <div class="messages" id="messages">
+    <div class="msg ai">你好！我是电影数据分析助手。<br><br>你可以自由提问，我会基于250部电影的详细数据为你解答。<br><br>左侧的 <b>TF-IDF 推荐</b> 可以帮你发现相似的好电影——试试输入"肖申克的救赎"看看。</div>
+  </div>
+  <div class="chat-input">
+    <input id="question" placeholder="输入你的问题..." onkeydown="if(event.key==='Enter')ask()" autocomplete="off">
+    <button id="sendBtn" onclick="ask()">发送</button>
+  </div>
+</section>
 </main>
 <script>
 let history=[];
 let statsData=null;
-
 fetch('/api/stats').then(r=>r.json()).then(d=>{statsData=d});
 
 function showStats(type){
   if(!statsData){setTimeout(()=>showStats(type),200);return}
   let d=statsData,a=d[type+'_top'],b=d[type+'_score'];
   let title={'country':'国家/地区','genre':'类型','director':'导演','actor':'演员'}[type];
-  let h=`▎${title}出现次数 Top10\\n`+a.map((x,i)=>`  ${(i+1+'').padStart(2)}.  ${x.name.padEnd(22)} ${(x.count+'').padStart(3)} 部`).join('\\n');
-  if(b)h+=`\\n\\n▎${title}平均评分 Top10\\n`+b.map((x,i)=>`  ${(i+1+'').padStart(2)}.  ${x.mean.toFixed(2)} 分  ${x.name}  (${x.count}部)`).join('\\n');
-  document.getElementById('result').textContent=h;
+  let h='<div class="stats-table">';
+  h+='<div class="section-title">'+title+'出现次数 Top10</div>';
+  a.forEach((x,i)=>{h+=`  <b>${i+1}.</b>  ${x.name.padEnd(22)} <b>${x.count}</b> 部<br>`});
+  if(b){h+='<div class="section-title">'+title+'平均评分 Top10</div>';
+  b.forEach((x,i)=>{h+=`  <b>${i+1}.</b>  <span style="color:#e09040;font-weight:700">${x.mean.toFixed(2)}</span> 分  ${x.name}  (${x.count}部)<br>`});}
+  h+='</div>';
+  document.getElementById('result').innerHTML=h;
 }
 
 function doRecommend(){
   let q=document.getElementById('recInput').value.trim();
-  if(!q)return;
-  document.getElementById('result').textContent='正在分析剧情简介...';
+  if(!q){return}
+  document.getElementById('result').innerHTML='<div class="empty">正在分析剧情简介，计算文本相似度...</div>';
   fetch('/api/recommend_ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({q:q})})
   .then(r=>r.json()).then(d=>{
-    if(!d.ok){document.getElementById('result').textContent='错误: '+d.error;return}
-    let h=`■ 输入: ${d.query_title}\\n   剧情: ${d.query_summary.slice(0,150)}...\\n\\n`;
-    h+=`■ TF-IDF 相似推荐 (基于剧情简介的余弦相似度)\\n\\n`;
+    if(!d.ok){document.getElementById('result').innerHTML='<div class="empty">错误: '+d.error+'</div>';return}
+    let h=`<div style="font-size:13px;color:#888;margin-bottom:10px">输入: <b style="color:#333">${d.query_title}</b> &nbsp;|&nbsp; ${d.query_summary.slice(0,80)}...</div>`;
     d.results.forEach((r,i)=>{
-      h+=`${i+1}. ${r.title} (${r.score}分, ${r.year}年)\\n`;
-      h+=`   相似度: ${(r.similarity*100).toFixed(1)}% | ${r.genre}\\n`;
-      h+=`   导演: ${r.director}\\n`;
-      h+=`   简介: ${r.summary.slice(0,120)}...\\n\\n`;
+      let pct=(r.similarity*100).toFixed(0);
+      let cls=pct>15?'#2d8c4a':pct>8?'#e09040':'#999';
+      h+=`<div class="rec-card">
+        <div class="rec-header">
+          <div><span class="rec-rank">${i+1}</span><span class="rec-title">${r.title}</span></div>
+          <span class="rec-score">${r.score}分</span>
+        </div>
+        <div class="rec-meta">${r.year}年 &nbsp;|&nbsp; ${r.genre} &nbsp;|&nbsp; 导演: ${r.director} &nbsp;|&nbsp; <span style="color:${cls};font-weight:600">相似度 ${pct}%</span></div>
+        <div class="rec-summary">${r.summary}</div>
+      </div>`;
     });
-    if(d.explanation)h+=`── AI 分析 ──\\n${d.explanation}`;
-    document.getElementById('result').textContent=h;
+    if(d.explanation)h+='<div class="ai-note">'+d.explanation.replace(/\n/g,'<br>')+'</div>';
+    document.getElementById('result').innerHTML=h;
   });
 }
 
@@ -424,27 +478,27 @@ function addMsg(role,text){
 }
 
 function ask(){
-  let inp=document.getElementById('question');
+  let inp=document.getElementById('question'),btn=document.getElementById('sendBtn');
   let q=inp.value.trim();if(!q)return;
-  inp.value='';inp.disabled=true;
+  inp.value='';inp.disabled=btn.disabled=true;
   addMsg('user',q);
-  let think=addMsg('thinking','AI 思考中...');
+  let think=addMsg('thinking','AI 思考中');
   fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,history:history})})
   .then(r=>r.json()).then(d=>{
     think.remove();
-    if(d.ok){addMsg('ai',d.answer.replace(/\\n/g,'<br>'));history.push({role:'user',content:q});history.push({role:'assistant',content:d.answer})}
+    if(d.ok){addMsg('ai',d.answer.replace(/\n/g,'<br>'));history.push({role:'user',content:q});history.push({role:'assistant',content:d.answer})}
     else addMsg('ai','[错误] '+d.error);
-    inp.disabled=false;inp.focus();
+    inp.disabled=btn.disabled=false;inp.focus();
   });
 }
 
 function quickAsk(q){document.getElementById('question').value=q;ask()}
 
 function genReport(){
-  document.getElementById('result').textContent='正在生成AI分析报告，请稍候...';
+  document.getElementById('result').innerHTML='<div class="empty">正在调用 DeepSeek 生成完整分析报告...<br><small>预计需要 15-30 秒</small></div>';
   fetch('/api/report',{method:'POST'}).then(r=>r.json()).then(d=>{
-    if(d.ok)document.getElementById('result').textContent='报告已生成！\\n\\n文件: report/ai_analysis_report.md\\n\\n'+d.preview;
-    else document.getElementById('result').textContent='生成失败: '+d.error;
+    if(d.ok)document.getElementById('result').innerHTML='<div style="font-size:13px;line-height:1.8"><b style="color:#2d8c4a">报告已生成!</b><br><br>文件: <code>report/ai_analysis_report.md</code><br><br>'+d.preview.replace(/\n/g,'<br>')+'</div>';
+    else document.getElementById('result').innerHTML='<div class="empty">生成失败: '+d.error+'</div>';
   });
 }
 </script>
