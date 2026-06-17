@@ -6,110 +6,15 @@
 
 策略：
   - 列表页（桌面版）：已含导演、演员信息，补充解析即可
-  - 详情页（手机版）：获取片长、剧情简介
-  - 语言字段：通过"国家→语言"映射表推断（手机页无语言信息）
+  - 详情页（手机版）：获取片长、语言、剧情简介等
 
 输出: data/movies_detail.csv（11个字段的完整数据集）
 """
 import requests
 from bs4 import BeautifulSoup
 import time
-import random
 import pandas as pd
 import re
-
-
-# ============================================================
-#  国家 → 语言 映射表
-#  手机版详情页不显示语言，根据制片国家推断
-# ============================================================
-
-COUNTRY_LANG_MAP = {
-    "美国": "英语",
-    "英国": "英语",
-    "加拿大": "英语",
-    "澳大利亚": "英语",
-    "爱尔兰": "英语",
-    "新西兰": "英语",
-    "中国大陆": "汉语普通话",
-    "中国香港": "粤语",
-    "中国台湾": "汉语普通话",
-    "日本": "日语",
-    "韩国": "韩语",
-    "法国": "法语",
-    "德国": "德语",
-    "意大利": "意大利语",
-    "西班牙": "西班牙语",
-    "印度": "印地语",
-    "巴西": "葡萄牙语",
-    "葡萄牙": "葡萄牙语",
-    "俄罗斯": "俄语",
-    "苏联": "俄语",
-    "阿根廷": "西班牙语",
-    "墨西哥": "西班牙语",
-    "瑞典": "瑞典语",
-    "丹麦": "丹麦语",
-    "波兰": "波兰语",
-    "泰国": "泰语",
-    "伊朗": "波斯语",
-    "土耳其": "土耳其语",
-    "荷兰": "荷兰语",
-    "比利时": "法语",
-    "瑞士": "德语",
-    "挪威": "挪威语",
-    "芬兰": "芬兰语",
-    "希腊": "希腊语",
-    "捷克": "捷克语",
-    "斯洛伐克": "捷克语",
-    "匈牙利": "匈牙利语",
-    "罗马尼亚": "罗马尼亚语",
-    "保加利亚": "保加利亚语",
-    "南斯拉夫": "塞尔维亚语",
-    "捷克共和国": "捷克语",
-    "奥地利": "德语",
-    "以色列": "希伯来语",
-    "南非": "英语",
-    "塞内加尔": "法语",
-    "阿尔及利亚": "阿拉伯语",
-    "摩洛哥": "阿拉伯语",
-    "阿富汗": "达里语",
-    "越南": "越南语",
-    "菲律宾": "菲律宾语",
-    "印度尼西亚": "印尼语",
-    "马来西亚": "马来语",
-    "新加坡": "英语",
-    "冰岛": "冰岛语",
-    "哥伦比亚": "西班牙语",
-    "智利": "西班牙语",
-    "秘鲁": "西班牙语",
-    "古巴": "西班牙语",
-    "乌克兰": "乌克兰语",
-    "阿联酋": "阿拉伯语",
-    "黎巴嫩": "阿拉伯语",
-}
-
-
-def infer_language(country_str):
-    """
-    根据制片国家/地区推断语言。
-
-    参数:
-        country_str: 如 "美国"、"中国大陆 中国香港"、"美国 英国"
-
-    返回:
-        推断的语言字符串，如 "英语"、"汉语普通话 / 粤语"
-    """
-    if not country_str:
-        return ""
-
-    countries = country_str.split()
-    langs = []
-    for c in countries:
-        lang = COUNTRY_LANG_MAP.get(c, "")
-        if lang and lang not in langs:
-            langs.append(lang)
-
-    return " / ".join(langs)
 
 
 # ============================================================
@@ -214,185 +119,88 @@ def get_list_page_data(start):
 
 
 # ============================================================
-#  第二部分：手机详情页爬取（补充片长、简介）
-#  语言不在此处获取，后续通过国家映射推断
+#  第二部分：手机详情页爬取（补充片长、语言、简介）
 # ============================================================
 
-# 移动端 User-Agent 池，减少被限流概率
-MOBILE_UA_POOL = [
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15",
-    "Mozilla/5.0 (iPad; CPU OS 14_0 like Mac OS X) AppleWebKit/605.1.15",
-    "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36",
-    "Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36",
-]
-
-
-def get_mobile_detail(url, max_retries=3):
+def get_mobile_detail(url):
     """
-    从手机版详情页获取片长、剧情简介。
-    带重试机制：请求失败或返回防爬页面时自动重试。
+    从手机版详情页获取片长、语言、剧情简介。
 
     手机版页面结构：
       - sub-meta: "国家 / 类型 / 上映日期上映 / 片长XXX分钟"
       - subject-intro: 剧情简介全文
 
     参数:
-        url: 桌面版详情页URL
-        max_retries: 最大重试次数
+        url: 桌面版详情页URL（如 https://movie.douban.com/subject/1292052/）
 
-    返回: dict，包含 runtime, summary
+    返回: dict，包含 runtime, language, summary
     """
+    # 从桌面版URL提取subject_id
     match = re.search(r"/subject/(\d+)/", url)
     if not match:
-        return {"runtime": "", "summary": ""}
+        return {"runtime": "", "language": "", "summary": ""}
 
     subject_id = match.group(1)
     mobile_url = f"https://m.douban.com/movie/subject/{subject_id}/"
 
-    for attempt in range(1, max_retries + 1):
-        headers = {
-            "User-Agent": random.choice(MOBILE_UA_POOL),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9",
-        }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)"
+    }
 
-        try:
-            response = requests.get(mobile_url, headers=headers, timeout=15)
+    try:
+        response = requests.get(mobile_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.content, "lxml")
+    except Exception as e:
+        print(f"    ✗ 手机页请求失败: {e}")
+        return {"runtime": "", "language": "", "summary": ""}
 
-            # 检查是否被反爬（返回的是JS挑战页面而非真实内容）
-            if len(response.content) < 5000:
-                if attempt < max_retries:
-                    wait = attempt * 3 + random.uniform(1, 3)
-                    print(f"    ⚠ 疑似反爬页面 (len={len(response.content)}), "
-                          f"第{attempt}次重试, 等待{wait:.1f}s")
-                    time.sleep(wait)
-                    continue
-                else:
-                    print(f"    ✗ 重试{max_retries}次后仍失败")
-                    return {"runtime": "", "summary": ""}
+    # --- 片长 ---
+    runtime = ""
+    meta = soup.find("div", class_="sub-meta")
+    if meta:
+        meta_text = meta.get_text(" ", strip=True)
+        # 从 "片长142分钟" 中提取
+        rt_match = re.search(r"片长(\d+\s*分?钟?)", meta_text, re.UNICODE)
+        if rt_match:
+            runtime = rt_match.group(0)
 
-            soup = BeautifulSoup(response.content, "lxml")
+    # --- 语言 ---
+    # 手机版详情页通常不直接显示语言，使用 meta 中的信息
+    # 部分电影在 meta 中有语言信息
+    language = ""
+    if meta:
+        # 尝试匹配 "语言: XXX" 或从sub-meta中提取
+        lang_match = re.search(r"语言[：:]\s*([^\s/]+)", meta.get_text(" ", strip=True))
+        if lang_match:
+            language = lang_match.group(1)
 
-            # --- 片长 ---
-            runtime = ""
-            meta = soup.find("div", class_="sub-meta")
-            if meta:
-                meta_text = meta.get_text(" ", strip=True)
-                rt_match = re.search(r"片长(\d+\s*分?钟?)", meta_text, re.UNICODE)
-                if rt_match:
-                    runtime = rt_match.group(0)
+    # --- 剧情简介 ---
+    summary = ""
+    intro = soup.find("section", class_="subject-intro")
+    if intro:
+        # 提取 "剧情简介" 之后的文字
+        full_text = intro.get_text(" ", strip=True)
+        # 去掉 "剧情简介" 标签和 "本片获得..." 之类的获奖信息
+        summary_text = full_text.replace("剧情简介", "").strip()
+        # 截取主要简介部分（去掉获奖信息等附加内容）
+        extra_match = re.search(
+            r"(?:本片|该片|影片|此片|电影)(?:获得|根据|改编|入围|荣获|提名)",
+            summary_text
+        )
+        if extra_match:
+            summary_text = summary_text[:extra_match.start()].strip()
+        summary = re.sub(r"\s+", " ", summary_text)
 
-            # --- 剧情简介 ---
-            summary = ""
-            intro = soup.find("section", class_="subject-intro")
-            if intro:
-                full_text = intro.get_text(" ", strip=True)
-                summary_text = full_text.replace("剧情简介", "").strip()
-                # 截掉获奖信息等附加内容
-                extra_match = re.search(
-                    r"(?:本片|该片|影片|此片|电影)(?:获得|根据|改编|入围|荣获|提名)",
-                    summary_text
-                )
-                if extra_match:
-                    summary_text = summary_text[:extra_match.start()].strip()
-                summary = re.sub(r"\s+", " ", summary_text)
-
-            # 至少获取到片长或简介才算成功
-            if runtime or summary:
-                return {"runtime": runtime, "summary": summary}
-
-            # 页面正常但没提取到内容（极少见）
-            if attempt < max_retries:
-                time.sleep(2)
-            else:
-                return {"runtime": "", "summary": ""}
-
-        except Exception as e:
-            if attempt < max_retries:
-                wait = attempt * 2 + random.uniform(0.5, 1.5)
-                print(f"    ⚠ 请求异常: {e}, 第{attempt}次重试, 等待{wait:.1f}s")
-                time.sleep(wait)
-            else:
-                print(f"    ✗ 请求异常，重试{max_retries}次后放弃: {e}")
-                return {"runtime": "", "summary": ""}
-
-    return {"runtime": "", "summary": ""}
+    return {
+        "runtime": runtime,
+        "language": language,
+        "summary": summary
+    }
 
 
 # ============================================================
 #  第三部分：主流程
-#  支持断点续传：
-#    1. 若 data/movies_detail.csv 已存在 → 只补爬缺失的片长/简介
-#    2. 若只有 data/movies.csv → 加载基础字段，跳过被封锁的列表页
-#    3. 语言字段始终通过国家映射补全
 # ============================================================
-
-CSV_PATH = "../data/movies_detail.csv"
-BASE_CSV_PATH = "../data/movies.csv"
-
-
-def load_existing_data():
-    """
-    尝试加载已有数据，判断是否需要爬取。
-
-    返回:
-        (all_movies, need_indices)
-        all_movies: 完整的电影列表
-        need_indices: 需要补爬的索引列表
-    """
-    import os
-
-    # 优先读取详情页CSV（最完整的版本）
-    if os.path.exists(CSV_PATH):
-        print(f"[加载] 发现已有 {CSV_PATH}")
-        df = pd.read_csv(CSV_PATH)
-        all_movies = df.to_dict("records")
-        _ensure_fields(all_movies)
-
-        need_indices = [
-            i for i, m in enumerate(all_movies)
-            if not m.get("runtime") or not m.get("summary")
-        ]
-
-        print(f"  已加载 {len(all_movies)} 条记录，")
-        print(f"  其中 {len(need_indices)} 条缺片长/简介需要补爬")
-        return all_movies, need_indices
-
-    # 回退：从基础CSV加载，列表页已被封锁时也能继续
-    if os.path.exists(BASE_CSV_PATH):
-        print(f"[加载] 发现已有 {BASE_CSV_PATH}（基础版）")
-        df = pd.read_csv(BASE_CSV_PATH)
-        all_movies = df.to_dict("records")
-
-        # 补充缺失字段为空值
-        _ensure_fields(all_movies)
-        for m in all_movies:
-            m["director"] = m.get("director", "")
-            m["actors"] = m.get("actors", "")
-            m["detail_url"] = m.get("detail_url", "")
-
-        # 所有电影都需要爬取手机详情页
-        need_indices = list(range(len(all_movies)))
-
-        print(f"  已加载 {len(all_movies)} 条记录（5字段基础版）")
-        print(f"  导演/演员/片长/简介需通过手机详情页获取")
-        print(f"  共 {len(need_indices)} 条需要爬取")
-        return all_movies, need_indices
-
-    print("[加载] 未找到任何数据文件，请先运行 douban_spider.py")
-    return None, None
-
-
-def _ensure_fields(movies):
-    """确保所有必要字段存在，缺失的填空字符串"""
-    fields = ["runtime", "summary", "language",
-              "director", "actors", "detail_url"]
-    for m in movies:
-        for f in fields:
-            if f not in m:
-                m[f] = ""
-
 
 def main():
     print("=" * 60)
@@ -400,68 +208,7 @@ def main():
     print("=" * 60)
     print()
 
-    # ---- 加载已有数据 ----
-    all_movies, need_indices = load_existing_data()
-
-    # ---- 情况A：已有数据，只需补爬缺失项 ----
-    if all_movies is not None:
-        if need_indices:
-            # 区分有URL和无URL的
-            can_crawl = [i for i in need_indices
-                         if all_movies[i].get("detail_url")]
-            cannot_crawl = [i for i in need_indices
-                            if not all_movies[i].get("detail_url")]
-
-            if cannot_crawl:
-                print(f"\n  ⚠ {len(cannot_crawl)} 部电影缺少详情页URL，无法爬取")
-                print(f"    需等列表页解封后重新生成")
-
-            if can_crawl:
-                print(f"\n[补爬] 手机详情页，补充 {len(can_crawl)} 部电影的片长/简介...")
-                for count, idx in enumerate(can_crawl):
-                    movie = all_movies[idx]
-                    print(f"  ({count + 1}/{len(can_crawl)}) {movie['title']}")
-
-                    extra = get_mobile_detail(movie.get("detail_url", ""))
-                    movie["runtime"] = extra["runtime"]
-                    movie["summary"] = extra["summary"]
-
-                    if extra["runtime"] or extra["summary"]:
-                        print(f"    ✓ 片长={extra['runtime'][:20]}, "
-                              f"简介={len(extra['summary'])}字")
-                    else:
-                        print(f"    ⚠ 未获取到补充信息")
-
-                    time.sleep(2 + random.uniform(0, 1.5))
-
-                    if (count + 1) % 10 == 0 and (count + 1) < len(can_crawl):
-                        print(f"    --- 已完成 {count + 1}/{len(can_crawl)}，"
-                              f"休息 8 秒 ---")
-                        time.sleep(8)
-
-        # ---- 补全语言 ----
-        print(f"\n{'=' * 60}")
-        print("  补全语言 & 保存数据...")
-
-        for movie in all_movies:
-            if not movie.get("language"):
-                movie["language"] = infer_language(movie.get("country", ""))
-
-        df = pd.DataFrame(all_movies)
-        df.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
-
-        has_runtime = (df["runtime"].notna() & (df["runtime"] != "")).sum()
-        has_summary = (df["summary"].notna() & (df["summary"] != "")).sum()
-        has_language = (df["language"].notna() & (df["language"] != "")).sum()
-
-        print(f"  ✓ 已保存 {len(df)} 条记录到 data/movies_detail.csv")
-        print(f"    片长覆盖: {has_runtime}/{len(df)}")
-        print(f"    简介覆盖: {has_summary}/{len(df)}")
-        print(f"    语言覆盖: {has_language}/{len(df)}")
-        print(f"{'=' * 60}")
-        return
-
-    # ---- 情况B：需从头爬取（列表页 + 手机详情页） ----
+    # 步骤1：从列表页获取基础信息（含导演、演员）
     print("[阶段 1/2] 爬取列表页，提取基础信息 + 导演 + 演员...")
     all_movies = []
 
@@ -470,19 +217,13 @@ def main():
         print(f"  列表页 第{page + 1}页 (start={start})...")
         page_data = get_list_page_data(start)
         all_movies.extend(page_data)
-        time.sleep(1 + random.uniform(0, 0.5))
+        time.sleep(1)
 
     print(f"  ✓ 列表页爬取完成，共 {len(all_movies)} 部电影\n")
 
-    if not all_movies:
-        print("  ✗ 错误：列表页未获取到数据，可能要求登录。")
-        print("    请稍后再试。")
-        return
-
-    # 后续同原有逻辑...
-    print("[阶段 2/2] 爬取手机详情页，补充片长 + 简介...")
+    # 步骤2：逐部爬取手机详情页，补充片长、语言、简介
+    print("[阶段 2/2] 爬取手机详情页，补充片长 + 语言 + 简介...")
     total = len(all_movies)
-    failed_indices = []
 
     for i, movie in enumerate(all_movies):
         url = movie["detail_url"]
@@ -490,6 +231,7 @@ def main():
 
         extra = get_mobile_detail(url)
         movie["runtime"] = extra["runtime"]
+        movie["language"] = extra["language"]
         movie["summary"] = extra["summary"]
 
         if extra["runtime"] or extra["summary"]:
@@ -497,36 +239,15 @@ def main():
                   f"简介={len(extra['summary'])}字")
         else:
             print(f"    ⚠ 未获取到补充信息")
-            failed_indices.append(i)
 
-        time.sleep(1.5 + random.uniform(0, 1.0))
+        time.sleep(1.5)
 
-        if (i + 1) % 50 == 0 and (i + 1) < total:
-            print(f"    --- 已完成 {i + 1}/{total}，休息 10 秒 ---")
-            time.sleep(10)
-
-    if failed_indices:
-        print(f"\n  ⚠ {len(failed_indices)} 部电影未获取到详情，进行重试...")
-        for idx in failed_indices:
-            movie = all_movies[idx]
-            print(f"  重试: {movie['title']}")
-            time.sleep(3 + random.uniform(0, 2))
-            extra = get_mobile_detail(movie["detail_url"], max_retries=5)
-            movie["runtime"] = extra["runtime"]
-            movie["summary"] = extra["summary"]
-            if extra["runtime"] or extra["summary"]:
-                print(f"    ✓ 重试成功")
-            else:
-                print(f"    ✗ 重试仍失败")
-
-    # ---- 补全语言 + 保存 ----
+    # 步骤3：保存数据
     print(f"\n{'=' * 60}")
-    print("  补全语言 & 保存数据...")
-
-    for movie in all_movies:
-        movie["language"] = infer_language(movie.get("country", ""))
+    print("  保存数据...")
 
     df = pd.DataFrame(all_movies)
+    # 调整列顺序
     column_order = [
         "title", "score", "year", "country", "genre",
         "director", "actors", "runtime", "language", "summary",
@@ -534,18 +255,11 @@ def main():
     ]
     df = df[column_order]
 
-    df.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
-
-    has_runtime = (df["runtime"] != "").sum()
-    has_summary = (df["summary"] != "").sum()
-    has_language = (df["language"] != "").sum()
-
+    df.to_csv("../data/movies_detail.csv", index=False, encoding="utf-8-sig")
     print(f"  ✓ 成功保存 {len(df)} 条记录到 data/movies_detail.csv")
-    print(f"    片长覆盖: {has_runtime}/{len(df)}")
-    print(f"    简介覆盖: {has_summary}/{len(df)}")
-    print(f"    语言覆盖: {has_language}/{len(df)}")
     print(f"{'=' * 60}")
 
+    # 打印数据预览
     print(f"\n数据预览（前5行）:\n")
     print(df.head().to_string(max_colwidth=30))
 
