@@ -2,7 +2,7 @@
 豆瓣Top250电影分析系统 —— GUI版
 """
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, messagebox
 import pandas as pd
 import requests
 import os
@@ -153,14 +153,20 @@ class App:
         self._make_btn(left, "生成 AI 完整分析报告", self.generate_report,
                        accent=True).pack(pady=3, padx=20, fill=tk.X)
 
-        # 结果显示
-        self.result_text = scrolledtext.ScrolledText(
-            left, font=("Consolas", 10), wrap=tk.WORD,
-            bg="#fafaf7", fg=C_TEXT, relief=tk.FLAT,
-            bd=0, padx=12, pady=8
+        # 结果显示（只读）
+        result_container = tk.Frame(left, bg=C_PANEL)
+        result_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=(12, 15))
+
+        self.result_text = tk.Text(
+            result_container, font=("Consolas", 10), wrap=tk.WORD,
+            bg="#fafaf7", fg=C_TEXT, relief=tk.FLAT, bd=0,
+            padx=12, pady=8, state=tk.DISABLED
         )
-        self.result_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=(12, 15))
-        self.show_result("欢迎", "点击左侧按钮查看数据统计\n\n右侧窗口可与 AI 自由对话")
+        result_scroll = ttk.Scrollbar(result_container, command=self.result_text.yview)
+        self.result_text.configure(yscrollcommand=result_scroll.set)
+        self.result_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        result_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self._result_insert("欢迎\n\n点击左侧按钮查看数据统计\n\n右侧窗口可与 AI 自由对话")
 
         # -- 右侧面板 --
         right = tk.Frame(body, bg=C_PANEL, bd=0, highlightbackground=C_BORDER,
@@ -278,13 +284,20 @@ class App:
         self.chat_text.delete("end-2c linestart", "end-1c")
         self.chat_text.configure(state=tk.DISABLED)
 
-    # ---- 结果显示 ----
+    # ---- 结果显示（只读） ----
+
+    def _result_insert(self, text):
+        self.result_text.configure(state=tk.NORMAL)
+        self.result_text.insert(tk.END, text)
+        self.result_text.configure(state=tk.DISABLED)
 
     def show_result(self, title, content):
+        self.result_text.configure(state=tk.NORMAL)
         self.result_text.delete(1.0, tk.END)
         self.result_text.insert(tk.END, f"  {title}\n")
         self.result_text.insert(tk.END, f"  {'─' * 38}\n\n")
         self.result_text.insert(tk.END, content)
+        self.result_text.configure(state=tk.DISABLED)
 
     def show_country(self):
         e = explode_col(self.df["country"], " / ")
