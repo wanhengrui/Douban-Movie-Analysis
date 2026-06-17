@@ -1,5 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
+import os
 import time
 import pandas as pd
 
@@ -82,7 +83,8 @@ df = pd.DataFrame(all_movies)
 
 print(df.head())
 
-df.to_csv("../data/movies.csv",
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+df.to_csv(os.path.join(base_dir, "data", "movies.csv"),
           index=False,
           encoding="utf-8-sig"
           )

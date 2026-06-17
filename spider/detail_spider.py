@@ -12,6 +12,7 @@
 """
 import requests
 from bs4 import BeautifulSoup
+import os
 import time
 import pandas as pd
 import re
@@ -255,7 +256,9 @@ def main():
     ]
     df = df[column_order]
 
-    df.to_csv("../data/movies_detail.csv", index=False, encoding="utf-8-sig")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    df.to_csv(os.path.join(base_dir, "data", "movies_detail.csv"),
+              index=False, encoding="utf-8-sig")
     print(f"  ✓ 成功保存 {len(df)} 条记录到 data/movies_detail.csv")
     print(f"{'=' * 60}")
 

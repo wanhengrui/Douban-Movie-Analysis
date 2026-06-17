@@ -8,6 +8,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import re
+import os
 import time
 import random
 
@@ -68,7 +69,9 @@ def fix_one(url):
 
 
 def main():
-    df = pd.read_csv("data/movies_detail.csv")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    csv_path = os.path.join(base_dir, "data", "movies_detail.csv")
+    df = pd.read_csv(csv_path)
 
     # 补全缺失字段
     for col in ["runtime", "summary", "director", "actors", "language"]:
@@ -100,7 +103,7 @@ def main():
 
         time.sleep(1.5 + random.uniform(0, 1))
 
-    df.to_csv("data/movies_detail.csv", index=False, encoding="utf-8-sig")
+    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     print(f"\n修复完成: {fixed}/{len(need_fix)}")
     print(f"数据已保存到 data/movies_detail.csv")
 
