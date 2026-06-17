@@ -390,6 +390,11 @@ def main():
     print(f"\n{'=' * 60}")
     print("  推断语言 & 保存数据...")
 
+    if not all_movies:
+        print("  ✗ 错误：未获取到任何数据，列表页可能要求登录。")
+        print("    请稍后再试，或使用 fix_data.py 补全已有数据。")
+        return
+
     # 根据国家推断语言
     for movie in all_movies:
         movie["language"] = infer_language(movie.get("country", ""))
