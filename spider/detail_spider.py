@@ -322,7 +322,59 @@ def get_mobile_detail(url, max_retries=3):
 
 # ============================================================
 #  第三部分：主流程
+#  支持断点续传：
+#    1. 若 data/movies_detail.csv 已存在 → 只补爬缺失的片长/简介
+#    2. 若只有 data/movies.csv → 从头爬取（需列表页可用）
+#    3. 语言字段始终通过国家映射补全
 # ============================================================
+
+CSV_PATH = "../data/movies_detail.csv"
+BASE_CSV_PATH = "../data/movies.csv"
+
+
+def load_existing_data():
+    """
+    尝试加载已有数据，判断是否需要爬取。
+
+    返回:
+        (all_movies, need_indices)
+        all_movies: 完整的电影列表（从已有CSV加载）
+        need_indices: 需要补爬的索引列表（runtime或summary为空）
+    """
+    import os
+
+    # 优先读取详情页CSV
+    if os.path.exists(CSV_PATH):
+        print(f"[加载] 发现已有 {CSV_PATH}")
+        df = pd.read_csv(CSV_PATH)
+        all_movies = df.to_dict("records")
+
+        # 确保必要字段存在
+        for movie in all_movies:
+            if "runtime" not in movie:
+                movie["runtime"] = ""
+            if "summary" not in movie:
+                movie["summary"] = ""
+            if "language" not in movie:
+                movie["language"] = ""
+
+        need_indices = [
+            i for i, m in enumerate(all_movies)
+            if not m.get("runtime") or not m.get("summary")
+        ]
+
+        print(f"  已加载 {len(all_movies)} 条记录，")
+        print(f"  其中 {len(need_indices)} 条缺片长/简介需要补爬")
+        return all_movies, need_indices
+
+    # 回退：读取基础CSV
+    if os.path.exists(BASE_CSV_PATH):
+        print(f"[加载] 发现已有 {BASE_CSV_PATH}（基础版）")
+        print(f"  需要从头爬取列表页获取导演/演员...")
+        return None, None
+
+    return None, None
+
 
 def main():
     print("=" * 60)
@@ -330,7 +382,57 @@ def main():
     print("=" * 60)
     print()
 
-    # ---- 阶段1：列表页获取基础信息（含导演、演员） ----
+    # ---- 加载已有数据 ----
+    all_movies, need_indices = load_existing_data()
+
+    # ---- 情况A：已有 movies_detail.csv，只需补爬缺失项 ----
+    if all_movies is not None:
+        if need_indices:
+            print(f"\n[补爬] 手机详情页，补充 {len(need_indices)} 部电影的片长/简介...")
+            for count, idx in enumerate(need_indices):
+                movie = all_movies[idx]
+                print(f"  ({count + 1}/{len(need_indices)}) {movie['title']}")
+
+                extra = get_mobile_detail(movie.get("detail_url", ""))
+                movie["runtime"] = extra["runtime"]
+                movie["summary"] = extra["summary"]
+
+                if extra["runtime"] or extra["summary"]:
+                    print(f"    ✓ 片长={extra['runtime'][:20]}, "
+                          f"简介={len(extra['summary'])}字")
+                else:
+                    print(f"    ⚠ 未获取到补充信息")
+
+                time.sleep(2 + random.uniform(0, 1.5))
+
+                # 每10部休息一下
+                if (count + 1) % 10 == 0:
+                    print(f"    --- 已完成 {count + 1}/{len(need_indices)}，休息 8 秒 ---")
+                    time.sleep(8)
+
+        # ---- 补全语言 ----
+        print(f"\n{'=' * 60}")
+        print("  补全语言 & 保存数据...")
+
+        for movie in all_movies:
+            if not movie.get("language"):
+                movie["language"] = infer_language(movie.get("country", ""))
+
+        df = pd.DataFrame(all_movies)
+        df.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
+
+        has_runtime = (df["runtime"].notna() & (df["runtime"] != "")).sum()
+        has_summary = (df["summary"].notna() & (df["summary"] != "")).sum()
+        has_language = (df["language"].notna() & (df["language"] != "")).sum()
+
+        print(f"  ✓ 已保存 {len(df)} 条记录到 data/movies_detail.csv")
+        print(f"    片长覆盖: {has_runtime}/{len(df)}")
+        print(f"    简介覆盖: {has_summary}/{len(df)}")
+        print(f"    语言覆盖: {has_language}/{len(df)}")
+        print(f"{'=' * 60}")
+        return
+
+    # ---- 情况B：需从头爬取（列表页 + 手机详情页） ----
     print("[阶段 1/2] 爬取列表页，提取基础信息 + 导演 + 演员...")
     all_movies = []
 
@@ -343,10 +445,15 @@ def main():
 
     print(f"  ✓ 列表页爬取完成，共 {len(all_movies)} 部电影\n")
 
-    # ---- 阶段2：手机详情页补充片长 + 简介 ----
+    if not all_movies:
+        print("  ✗ 错误：列表页未获取到数据，可能要求登录。")
+        print("    请稍后再试。")
+        return
+
+    # 后续同原有逻辑...
     print("[阶段 2/2] 爬取手机详情页，补充片长 + 简介...")
     total = len(all_movies)
-    failed_indices = []  # 记录失败的索引，最后统一重试
+    failed_indices = []
 
     for i, movie in enumerate(all_movies):
         url = movie["detail_url"]
@@ -363,21 +470,18 @@ def main():
             print(f"    ⚠ 未获取到补充信息")
             failed_indices.append(i)
 
-        # 随机延迟 1.5~2.5 秒，降低被限流概率
         time.sleep(1.5 + random.uniform(0, 1.0))
 
-        # 每 50 部电影多休息 10 秒，进一步降低触发反爬的概率
         if (i + 1) % 50 == 0 and (i + 1) < total:
             print(f"    --- 已完成 {i + 1}/{total}，休息 10 秒 ---")
             time.sleep(10)
 
-    # ---- 阶段2补充：重试失败的 ----
     if failed_indices:
         print(f"\n  ⚠ {len(failed_indices)} 部电影未获取到详情，进行重试...")
         for idx in failed_indices:
             movie = all_movies[idx]
             print(f"  重试: {movie['title']}")
-            time.sleep(3 + random.uniform(0, 2))  # 重试间隔更长
+            time.sleep(3 + random.uniform(0, 2))
             extra = get_mobile_detail(movie["detail_url"], max_retries=5)
             movie["runtime"] = extra["runtime"]
             movie["summary"] = extra["summary"]
@@ -386,16 +490,10 @@ def main():
             else:
                 print(f"    ✗ 重试仍失败")
 
-    # ---- 阶段3：推断语言 + 保存 ----
+    # ---- 补全语言 + 保存 ----
     print(f"\n{'=' * 60}")
-    print("  推断语言 & 保存数据...")
+    print("  补全语言 & 保存数据...")
 
-    if not all_movies:
-        print("  ✗ 错误：未获取到任何数据，列表页可能要求登录。")
-        print("    请稍后再试，或使用 fix_data.py 补全已有数据。")
-        return
-
-    # 根据国家推断语言
     for movie in all_movies:
         movie["language"] = infer_language(movie.get("country", ""))
 
@@ -407,17 +505,16 @@ def main():
     ]
     df = df[column_order]
 
-    df.to_csv("../data/movies_detail.csv", index=False, encoding="utf-8-sig")
+    df.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
 
-    # 统计
     has_runtime = (df["runtime"] != "").sum()
     has_summary = (df["summary"] != "").sum()
     has_language = (df["language"] != "").sum()
 
     print(f"  ✓ 成功保存 {len(df)} 条记录到 data/movies_detail.csv")
-    print(f"    片长覆盖: {has_runtime}/250")
-    print(f"    简介覆盖: {has_summary}/250")
-    print(f"    语言覆盖: {has_language}/250")
+    print(f"    片长覆盖: {has_runtime}/{len(df)}")
+    print(f"    简介覆盖: {has_summary}/{len(df)}")
+    print(f"    语言覆盖: {has_language}/{len(df)}")
     print(f"{'=' * 60}")
 
     print(f"\n数据预览（前5行）:\n")
