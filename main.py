@@ -1,191 +1,64 @@
 """
-豆瓣Top250电影分析系统 —— 主入口
+豆瓣Top250电影分析系统 —— GUI版
 
-命令行交互菜单，集成数据查询、AI问答、电影推荐等功能。
+基于 tkinter 的图形界面，提供数据分析、AI问答、电影推荐等功能。
 """
+import tkinter as tk
+from tkinter import ttk, scrolledtext, messagebox
 import pandas as pd
 import requests
 import os
+import threading
+import re
 import sys
 
-# 项目路径
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "data", "movies_cleaned.csv")
+# ============================================================
+#  配置
+# ============================================================
 
-# DeepSeek API 配置
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEEPSEEK_KEY = "sk-ee6a047554b24ba7923b7e8b35d76e3d"
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 
-# 全局数据
-df = None
-
-
 # ============================================================
-#  数据加载
+#  数据与工具
 # ============================================================
 
 def load_data():
-    global df
-    for p in [DATA_PATH,
-              os.path.join(BASE_DIR, "data", "movies_detail.csv"),
-              os.path.join(BASE_DIR, "data", "movies.csv")]:
-        if os.path.exists(p):
-            df = pd.read_csv(p)
-            return True
-    return False
+    for name in ["movies_cleaned.csv", "movies_detail.csv", "movies.csv"]:
+        path = os.path.join(BASE_DIR, "data", name)
+        if os.path.exists(path):
+            return pd.read_csv(path)
+    return None
 
-
-# ============================================================
-#  辅助函数
-# ============================================================
 
 def explode_col(series, sep):
     return series.dropna().str.split(sep).explode()
 
 
-def print_divider(title):
-    print(f"\n{'=' * 50}")
-    print(f"  {title}")
-    print(f"{'=' * 50}")
+def top_table(series, n=10):
+    """返回 top N 的格式化文本"""
+    lines = []
+    for i, (k, v) in enumerate(series.head(n).items(), 1):
+        lines.append(f"{i:2}. {k:30s} {v:4d} 部")
+    return "\n".join(lines)
+
+
+def score_table(grouped, n=10):
+    """返回均分排名格式化文本"""
+    lines = []
+    for i, (k, row) in enumerate(grouped.head(n).iterrows(), 1):
+        lines.append(f"{i:2}. {row['mean']:.2f} 分  {k}  ({int(row['count'])}部)")
+    return "\n".join(lines)
 
 
 # ============================================================
-#  菜单选项 1~4: 数据查询
+#  AI 调用（后台线程）
 # ============================================================
 
-def show_country_analysis():
-    print_divider("国家/地区分析")
-
-    exploded = explode_col(df["country"], " / ")
-    print("\n[出现次数 Top10]")
-    for c, n in exploded.value_counts().head(10).items():
-        print(f"  {c:10s} {n:3d} 部")
-
-    cs = pd.DataFrame({"country": exploded, "score": df.loc[exploded.index, "score"]})
-    g = cs.groupby("country")["score"].agg(["mean", "count"])
-    g = g[g["count"] >= 3].sort_values("mean", ascending=False).head(10)
-    print("\n[平均评分 Top10 (>=3部)]")
-    for c, row in g.iterrows():
-        print(f"  {c:10s} {row['mean']:.2f} 分 ({int(row['count'])}部)")
-
-
-def show_genre_analysis():
-    print_divider("类型分析")
-
-    exploded = explode_col(df["genre"], " ")
-    print("\n[出现次数 Top10]")
-    for g, n in exploded.value_counts().head(10).items():
-        print(f"  {g:8s} {n:3d} 部")
-
-    gs = pd.DataFrame({"genre": exploded, "score": df.loc[exploded.index, "score"]})
-    g = gs.groupby("genre")["score"].agg(["mean", "count"])
-    g = g[g["count"] >= 5].sort_values("mean", ascending=False).head(10)
-    print("\n[平均评分 Top10 (>=5部)]")
-    for t, row in g.iterrows():
-        print(f"  {t:8s} {row['mean']:.2f} 分 ({int(row['count'])}部)")
-
-
-def show_director_analysis():
-    print_divider("导演分析")
-
-    exploded = explode_col(df["director"], " / ")
-    print("\n[出现次数 Top10]")
-    for d, n in exploded.value_counts().head(10).items():
-        print(f"  {d} : {n} 部")
-
-    ds = pd.DataFrame({"director": exploded, "score": df.loc[exploded.index, "score"]})
-    g = ds.groupby("director")["score"].agg(["mean", "count"])
-    g = g[g["count"] >= 2].sort_values("mean", ascending=False).head(10)
-    print("\n[平均评分 Top10 (>=2部)]")
-    for d, row in g.iterrows():
-        print(f"  {row['mean']:.2f} 分 - {d} ({int(row['count'])}部)")
-
-
-def show_actor_analysis():
-    print_divider("演员分析")
-
-    exploded = explode_col(df["actors"], " / ")
-    print("\n[出现次数 Top10]")
-    for a, n in exploded.value_counts().head(10).items():
-        print(f"  {a} : {n} 部")
-
-    as_ = pd.DataFrame({"actor": exploded, "score": df.loc[exploded.index, "score"]})
-    g = as_.groupby("actor")["score"].agg(["mean", "count"])
-    g = g[g["count"] >= 2].sort_values("mean", ascending=False).head(10)
-    print("\n[平均评分 Top10 (>=2部)]")
-    for a, row in g.iterrows():
-        print(f"  {row['mean']:.2f} 分 - {a} ({int(row['count'])}部)")
-
-
-# ============================================================
-#  菜单选项 5: AI 自由问答
-# ============================================================
-
-def build_data_context():
-    """构造数据上下文，让AI了解数据集"""
-    exploded_c = explode_col(df["country"], " / ")
-    exploded_g = explode_col(df["genre"], " ")
-    exploded_d = explode_col(df["director"], " / ")
-    exploded_a = explode_col(df["actors"], " / ")
-
-    ctx = f"""## 数据集概况
-豆瓣Top250电影数据集，共{len(df)}部电影。
-评分范围 {df['score'].min():.1f}~{df['score'].max():.1f}，均分 {df['score'].mean():.2f}。
-年代跨度 {int(df['year'].min())}~{int(df['year'].max())}。
-
-## 国家Top5
-{', '.join(f'{c}({n})' for c, n in exploded_c.value_counts().head(5).items())}
-
-## 类型Top5
-{', '.join(f'{g}({n})' for g, n in exploded_g.value_counts().head(5).items())}
-
-## 导演Top5
-{', '.join(f'{d}({n})' for d, n in exploded_d.value_counts().head(5).items())}
-
-## 演员Top5
-{', '.join(f'{a}({n})' for a, n in exploded_a.value_counts().head(5).items())}
-
-## 年代分布
-{', '.join(f'{int(d)}年代({int(n)}部)' for d, n in df['year'].apply(lambda y: y//10*10).value_counts().sort_index().items())}
-
-## 最高分电影Top5
-{chr(10).join(f'- {r["title"]} ({r["score"]}分, {r["year"]}年)' for _, r in df.nlargest(5, 'score').iterrows())}
-
-## 完整数据列
-{', '.join(df.columns.tolist())}"""
-    return ctx
-
-
-def ai_chat():
-    print_divider("AI 智能问答 (输入 'q' 退出)")
-    print("  你可以自由提问关于这250部电影的任何问题")
-    print("  例如: '为什么日本动画片评分这么高？'")
-    print("        '帮我推荐5部悬疑片'")
-    print("        '1990年代最好的10部电影是什么？'")
-
-    data_ctx = build_data_context()
-    messages = [
-        {"role": "system", "content": f"""你是一个豆瓣电影数据分析助手。你可以访问以下数据集进行回答：
-
-{data_ctx}
-
-请根据数据回答问题，给出具体的数据和电影名称。如果用户要推荐电影，从数据集中筛选。
-回答简洁专业，用中文。如果用户问数据中不存在的信息，诚实说明。"""}
-    ]
-
-    while True:
-        try:
-            q = input("\n💬 你的问题: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            break
-
-        if q.lower() in ("q", "quit", "exit", ""):
-            print("  已退出AI问答")
-            break
-
-        print("  AI思考中...")
-        messages.append({"role": "user", "content": q})
-
+def call_ai(messages, callback):
+    """异步调用 DeepSeek API"""
+    def _run():
         try:
             resp = requests.post(
                 DEEPSEEK_URL,
@@ -197,105 +70,270 @@ def ai_chat():
             )
             if resp.status_code == 200:
                 answer = resp.json()["choices"][0]["message"]["content"]
-                print(f"\n🤖 {answer}")
-                messages.append({"role": "assistant", "content": answer})
+                callback(answer)
             else:
-                print(f"  API错误: {resp.status_code}")
+                callback(f"[API错误 {resp.status_code}]")
         except Exception as e:
-            print(f"  请求失败: {e}")
+            callback(f"[网络错误: {e}]")
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def build_data_context(df):
+    """构造AI数据上下文"""
+    ec = explode_col(df["country"], " / ")
+    eg = explode_col(df["genre"], " ")
+    ed = explode_col(df["director"], " / ")
+    ea = explode_col(df["actors"], " / ")
+    decades = df["year"].apply(lambda y: f"{y // 10 * 10}年代").value_counts()
+
+    return f"""豆瓣Top250数据集：{len(df)}部电影。
+评分{df['score'].min():.1f}~{df['score'].max():.1f}，均分{df['score'].mean():.2f}。
+年代{int(df['year'].min())}~{int(df['year'].max())}。
+
+国家Top5: {', '.join(f'{c}({n})' for c,n in ec.value_counts().head(5).items())}
+类型Top5: {', '.join(f'{g}({n})' for g,n in eg.value_counts().head(5).items())}
+导演Top5: {', '.join(f'{d}({n})' for d,n in ed.value_counts().head(5).items())}
+演员Top5: {', '.join(f'{a}({n})' for a,n in ea.value_counts().head(5).items())}
+年代分布: {', '.join(f'{d}({int(n)})' for d,n in decades.items())}
+
+高分Top5: {', '.join(f'{r["title"]}({r["score"]})' for _,r in df.nlargest(5,'score').iterrows())}
+
+数据列: {', '.join(df.columns)}"""
 
 
 # ============================================================
-#  菜单选项 6: 生成AI报告
+#  GUI
 # ============================================================
 
-def generate_report():
-    print_divider("生成AI分析报告")
-    print("  正在调用 DeepSeek 生成完整分析报告...")
-    print("  请稍候，约需30秒...")
+class App:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("豆瓣Top250 电影分析系统")
+        self.root.geometry("900x680")
+        self.root.configure(bg="#f0f0f0")
 
-    # 导入并运行 ai_analysis 模块
-    sys.path.insert(0, os.path.join(BASE_DIR, "analysis"))
-    from ai_analysis import load_and_summarize, build_prompt, call_deepseek, save_report
+        # 加载数据
+        self.df = load_data()
+        if self.df is None:
+            messagebox.showerror("错误", "未找到数据文件")
+            root.destroy()
+            return
 
-    df_local, summary = load_and_summarize()
-    prompt = build_prompt(summary)
-    content = call_deepseek(prompt)
+        # AI对话历史
+        self.ai_messages = [
+            {"role": "system", "content": f"你是电影数据分析助手。回答简洁专业。数据:\n{build_data_context(self.df)}"}
+        ]
 
-    if content:
-        save_report(content, df_local, summary)
-        print(f"\n  报告已生成: report/ai_analysis_report.md")
-    else:
-        print("  生成失败，请检查网络连接")
+        self.setup_ui()
+        self.status(f"已加载 {len(self.df)} 部电影  |  评分 {self.df['score'].min():.1f}~{self.df['score'].max():.1f}")
+
+    # ---- 布局 ----
+
+    def setup_ui(self):
+        # 左侧面板 - 数据查询
+        left = ttk.Frame(self.root, width=400)
+        left.pack(side=tk.LEFT, fill=tk.BOTH, padx=10, pady=10)
+        left.pack_propagate(False)
+
+        ttk.Label(left, text="数据分析", font=("Microsoft YaHei", 14, "bold")).pack(pady=(0, 10))
+
+        btns = [
+            ("国家/地区分析", self.show_country),
+            ("类型分析", self.show_genre),
+            ("导演分析", self.show_director),
+            ("演员分析", self.show_actor),
+            ("生成AI分析报告", self.generate_report),
+        ]
+        for text, cmd in btns:
+            ttk.Button(left, text=text, command=cmd, width=25).pack(pady=3)
+
+        ttk.Separator(left, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+
+        # 左侧结果显示
+        self.result_text = scrolledtext.ScrolledText(
+            left, width=48, height=28, font=("Consolas", 10), wrap=tk.WORD
+        )
+        self.result_text.pack(fill=tk.BOTH, expand=True)
+
+        # 状态栏
+        self.status_bar = ttk.Label(self.root, text="", relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # 右侧面板 - AI问答
+        right = ttk.Frame(self.root)
+        right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        ttk.Label(right, text="AI 智能问答", font=("Microsoft YaHei", 14, "bold")).pack(pady=(0, 5))
+        ttk.Label(right, text="自由提问，AI根据数据回答", foreground="gray").pack(pady=(0, 10))
+
+        # 快捷提问
+        quick_frame = ttk.Frame(right)
+        quick_frame.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(quick_frame, text="快捷提问:", font=("Microsoft YaHei", 9)).pack(side=tk.LEFT)
+        quick_qs = [
+            "推荐5部悬疑片",
+            "评分最高的10部电影",
+            "日本动画为什么分高",
+            "1990年代最好电影",
+        ]
+        for q in quick_qs:
+            ttk.Button(quick_frame, text=q, width=18,
+                       command=lambda q=q: self.quick_ask(q)).pack(side=tk.LEFT, padx=2)
+
+        # 聊天显示区
+        self.chat_text = scrolledtext.ScrolledText(
+            right, width=50, height=24, font=("Microsoft YaHei", 10), wrap=tk.WORD
+        )
+        self.chat_text.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        self.chat_text.tag_config("user", foreground="#1a73e8", font=("Microsoft YaHei", 10, "bold"))
+        self.chat_text.tag_config("ai", foreground="#0d904f")
+        self.chat_text.tag_config("system", foreground="gray", font=("Microsoft YaHei", 9))
+        self.chat_text.insert(tk.END, "AI: 你好！我是电影数据分析助手。\n", "system")
+        self.chat_text.insert(tk.END, "    可以问我任何关于这250部电影的问题。\n\n", "system")
+        self.chat_text.see(tk.END)
+
+        # 输入区
+        input_frame = ttk.Frame(right)
+        input_frame.pack(fill=tk.X)
+        self.input_entry = ttk.Entry(input_frame, font=("Microsoft YaHei", 11))
+        self.input_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self.input_entry.bind("<Return>", lambda e: self.ask_ai())
+        ttk.Button(input_frame, text="发送", command=self.ask_ai, width=8).pack(side=tk.RIGHT)
+
+    # ---- 数据查询方法 ----
+
+    def show_result(self, title, content):
+        self.result_text.delete(1.0, tk.END)
+        self.result_text.insert(tk.END, f"{'=' * 40}\n")
+        self.result_text.insert(tk.END, f"  {title}\n")
+        self.result_text.insert(tk.END, f"{'=' * 40}\n\n")
+        self.result_text.insert(tk.END, content)
+
+    def show_country(self):
+        e = explode_col(self.df["country"], " / ")
+        cs = pd.DataFrame({"country": e, "score": self.df.loc[e.index, "score"]})
+        g = cs.groupby("country")["score"].agg(["mean", "count"])
+        g = g[g["count"] >= 3].sort_values("mean", ascending=False)
+
+        text = "[出现次数 Top10]\n"
+        text += top_table(e.value_counts())
+        text += f"\n\n[平均评分 Top10 (>=3部)]\n"
+        text += score_table(g)
+        self.show_result("国家/地区分析", text)
+        self.status("已显示国家分析")
+
+    def show_genre(self):
+        e = explode_col(self.df["genre"], " ")
+        gs = pd.DataFrame({"genre": e, "score": self.df.loc[e.index, "score"]})
+        g = gs.groupby("genre")["score"].agg(["mean", "count"])
+        g = g[g["count"] >= 5].sort_values("mean", ascending=False)
+
+        text = "[出现次数 Top10]\n"
+        text += top_table(e.value_counts())
+        text += f"\n\n[平均评分 Top10 (>=5部)]\n"
+        text += score_table(g)
+        self.show_result("类型分析", text)
+        self.status("已显示类型分析")
+
+    def show_director(self):
+        e = explode_col(self.df["director"], " / ")
+        ds = pd.DataFrame({"director": e, "score": self.df.loc[e.index, "score"]})
+        g = ds.groupby("director")["score"].agg(["mean", "count"])
+        g = g[g["count"] >= 2].sort_values("mean", ascending=False)
+
+        text = "[出现次数 Top10]\n"
+        text += top_table(e.value_counts())
+        text += f"\n\n[平均评分 Top10 (>=2部)]\n"
+        text += score_table(g)
+        self.show_result("导演分析", text)
+        self.status("已显示导演分析")
+
+    def show_actor(self):
+        e = explode_col(self.df["actors"], " / ")
+        as_ = pd.DataFrame({"actor": e, "score": self.df.loc[e.index, "score"]})
+        g = as_.groupby("actor")["score"].agg(["mean", "count"])
+        g = g[g["count"] >= 2].sort_values("mean", ascending=False)
+
+        text = "[出现次数 Top10]\n"
+        text += top_table(e.value_counts())
+        text += f"\n\n[平均评分 Top10 (>=2部)]\n"
+        text += score_table(g)
+        self.show_result("演员分析", text)
+        self.status("已显示演员分析")
+
+    # ---- AI 报告 ----
+
+    def generate_report(self):
+        self.show_result("生成中...", "正在调用 DeepSeek 生成分析报告，请稍候...")
+        self.status("正在生成AI报告...")
+
+        # 构建完整统计
+        sys.path.insert(0, os.path.join(BASE_DIR, "analysis"))
+        from ai_analysis import load_and_summarize, build_prompt, call_deepseek, save_report
+        df, summary = load_and_summarize()
+        prompt = build_prompt(summary)
+
+        def on_done(content):
+            if content and not content.startswith("["):
+                save_report(content, df, summary)
+                self.show_result("AI分析报告", f"报告已生成！\n\n文件: report/ai_analysis_report.md\n\n{content[:2000]}...")
+                self.status("报告生成完成")
+            else:
+                self.show_result("错误", f"生成失败: {content}")
+                self.status("报告生成失败")
+
+        call_ai([
+            {"role": "system", "content": "你是专业电影数据分析师，请生成详细报告。"},
+            {"role": "user", "content": prompt}
+        ], on_done)
+
+    # ---- AI 问答 ----
+
+    def quick_ask(self, question):
+        self.input_entry.delete(0, tk.END)
+        self.input_entry.insert(0, question)
+        self.ask_ai()
+
+    def ask_ai(self):
+        q = self.input_entry.get().strip()
+        if not q:
+            return
+        self.input_entry.delete(0, tk.END)
+
+        # 显示用户消息
+        self.chat_text.insert(tk.END, f"你: {q}\n", "user")
+        self.chat_text.insert(tk.END, "AI思考中...\n", "system")
+        self.chat_text.see(tk.END)
+        self.status("AI思考中...")
+
+        self.ai_messages.append({"role": "user", "content": q})
+
+        def on_done(answer):
+            # 删除 "AI思考中..."
+            last_line_start = self.chat_text.get("end-2c linestart", "end-1c")
+            self.chat_text.delete("end-2c linestart", "end-1c")
+            self.chat_text.insert(tk.END, f"AI: {answer}\n\n", "ai")
+            self.chat_text.see(tk.END)
+            self.ai_messages.append({"role": "assistant", "content": answer})
+            self.status("就绪")
+
+        call_ai(self.ai_messages, on_done)
+
+    def status(self, msg):
+        self.status_bar.config(text=f"  {msg}")
 
 
 # ============================================================
-#  菜单选项 7: 电影推荐 (占位)
+#  启动
 # ============================================================
-
-def movie_recommend():
-    print_divider("电影推荐")
-    print("  该功能将在模块8中实现（TF-IDF + Cosine Similarity）")
-    input("\n按回车返回菜单...")
-
-
-# ============================================================
-#  主菜单
-# ============================================================
-
-def show_menu():
-    print(f"\n{'=' * 50}")
-    print(f"  豆瓣Top250电影分析系统")
-    print(f"{'=' * 50}")
-    print(f"  1. 查看国家分析")
-    print(f"  2. 查看类型分析")
-    print(f"  3. 查看导演分析")
-    print(f"  4. 查看演员分析")
-    print(f"  5. AI 智能问答（自由提问）")
-    print(f"  6. 生成AI分析报告")
-    print(f"  7. 获取电影推荐")
-    print(f"  0. 退出")
-    print(f"{'=' * 50}")
-
 
 def main():
-    print("=" * 50)
-    print("  豆瓣Top250电影分析系统")
-    print("=" * 50)
-
-    if not load_data():
-        print("错误: 未找到数据文件，请先运行爬虫")
-        return
-
-    print(f"  已加载 {len(df)} 部电影\n")
-
-    while True:
-        show_menu()
-        try:
-            choice = input("请选择 (0-7): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n  再见!")
-            break
-
-        if choice == "1":
-            show_country_analysis()
-        elif choice == "2":
-            show_genre_analysis()
-        elif choice == "3":
-            show_director_analysis()
-        elif choice == "4":
-            show_actor_analysis()
-        elif choice == "5":
-            ai_chat()
-        elif choice == "6":
-            generate_report()
-        elif choice == "7":
-            movie_recommend()
-        elif choice == "0":
-            print("  再见!")
-            break
-        else:
-            print("  无效选择，请重新输入")
+    root = tk.Tk()
+    # 设置中文字体兼容
+    style = ttk.Style()
+    style.theme_use("clam")
+    App(root)
+    root.mainloop()
 
 
 if __name__ == "__main__":
